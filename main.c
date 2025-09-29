@@ -1,6 +1,8 @@
 #define _DEFAULT_SOURCE
 
 #include <arpa/inet.h>
+#include <ctype.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,6 +10,36 @@
 #include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>
+
+#define BUFFER_LENGTH 10000
+
+int is_valid_number(const char *str) {
+  int i;
+  for (i = 0; i < strlen(str); i++) {
+    if (str[i] <= '0' || str[i] >= '9') {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+int is_valid_uuid(const char *str) {
+  if (str == NULL)
+    return 0;
+  if (strlen(str) != 36)
+    return 0;
+
+  for (int i = 0; i < 36; i++) {
+    if (i == 8 || i == 13 || i == 18 || i == 23) {
+      if (str[i] != '-')
+        return 0;
+    } else {
+      if (!isxdigit(str[i]))
+        return 0;
+    }
+  }
+  return 1;
+}
 
 int main(int argc, char *argv[]) {
   char *srvr_addr = NULL;
@@ -19,7 +51,8 @@ int main(int argc, char *argv[]) {
   int addr_len;
   time_t rawtime;
   char tt[100];
-  char buffer[10000];
+  char buffer[BUFFER_LENGTH];
+  char response_buffer[BUFFER_LENGTH];
 
   // get server ip address from command line
   if (argc >= 2) {
@@ -63,6 +96,8 @@ int main(int argc, char *argv[]) {
   }
   puts("\nStart Listening");
 
+  char request_target[100] = {0};
+  char request_method[10] = {0};
   for (;;) {
 
     addr_len = sizeof adr_clnt;
@@ -75,6 +110,7 @@ int main(int argc, char *argv[]) {
 
     memset(buffer, 0, sizeof buffer);
     int num = 0;
+    int i, j;
     while (1) {
       if ((num = recv(client_connection, buffer, sizeof(buffer), 0)) > 0) {
         // data in buffer
@@ -84,19 +120,48 @@ int main(int argc, char *argv[]) {
         printf("%s\n", buffer);
 
         // Behaviour to implement
+        // - understand where headers ends (and body starts)
         // - check if the message has a body looking for "Content-Length:"
         // header,
-        // - if there is a body, understand where it starts
+        // - extract "request-target" from request
         // - read Content-Length bytes
         // - generate a response
 
-        int i;
         char *enventual_body_starts_here;
         for (i = 0; i < strlen(buffer); i++) {
           if (buffer[i] == '\r' && buffer[i + 1] == '\n' &&
               buffer[i + 2] == '\r' && buffer[i + 3] == '\n') {
 
             enventual_body_starts_here = (char *)(buffer + i + 4);
+          }
+        }
+
+        // extract the request_method from response header
+        for (i = 0; i < strlen(buffer); i++) {
+          if (buffer[i] == ' ') {
+            strlcpy(request_method, buffer, i + 1);
+            request_method[i + 1] = '\0';
+            break;
+          }
+        }
+
+        // extract the request_target from response header
+        for (i = 0; i < strlen(buffer); i++) {
+          if (buffer[i] == '\r' && buffer[i + 1] == '\n') {
+            int start = 0, end = 0;
+            for (j = 0; j < i; j++) {
+              if (buffer[j] == '/' && start == 0) {
+                start = j;
+              } else if ((buffer[j] == ' ' || buffer[j] == '?') && start != 0) {
+                end = j;
+              }
+              if (start != 0 && end != 0) {
+                strlcpy(request_target, &(buffer[start]), end - start + 1);
+                request_target[end - start + 2] = '\0';
+                break;
+              }
+            }
+            break;
           }
         }
 
@@ -133,16 +198,75 @@ int main(int argc, char *argv[]) {
       }
     }
 
-    sprintf(tt, "HTTP/1.1 200 OK\nContent-Type: "
-                "application/json\n\n{\"ciao\":\"pippo\"}\n\n");
+    // Parse the request_target in order to provide a response
+    // The idea is to map the request target to the filesystem
+    // an example for: GET /cities/12345/shops
+    // the file containing the response has to searched on
+    //  ~/mockserver/cities/_/shops/GET
+
+    if (getenv("HOME") == NULL) {
+      printf("No HOME variable set. please do it and rerun this program\n");
+      exit(EXIT_FAILURE);
+    }
+
+    char mapped_file_path[200];
+    strcpy(mapped_file_path, getenv("HOME"));
+    strcat(mapped_file_path, "/mockserver");
+
+    char request_target_copy[100];
+    strcpy(request_target_copy, request_target);
+    char *token = strtok(request_target_copy, "/");
+    while (token != NULL) {
+      printf("\n%s", token);
+      // for each token search for the relative directory strarting from
+      // ~/mockserver/
+
+      // I should recognize uuid or numbers only strings and convert in "_",
+      // as "variable" part in usri path are mapped to filesystem as "_"
+
+      if (is_valid_number(token) == 1 || is_valid_uuid(token) == 1) {
+        token[0] = '_';
+        token[1] = '\0';
+      }
+
+      strcat(mapped_file_path, "/");
+      strcat(mapped_file_path, token);
+
+      token = strtok(NULL, "/");
+    }
+    strcat(mapped_file_path, "/");
+    strcat(mapped_file_path, request_method);
+
+    printf("Request-target: %s\n", request_target);
+    printf("Request-method: %s\n", request_method);
+    printf("mapped_file: %s\n", mapped_file_path);
+    /*FILE *fp = fopen(mapped_file_path, "r");*/
+    /*while (fgets(proc_net_tcp_line, 200, fd)) {*/
+    /*}*/
+    int fd = open(mapped_file_path, O_RDONLY);
+    if (fd == -1) {
+      printf("mapped_file doesn't exists");
+      exit(EXIT_FAILURE);
+    }
+
+    int nread = read(fd, response_buffer, BUFFER_LENGTH);
+    if(nread == -1){
+      perror("error reading mapped_file");
+      exit(EXIT_FAILURE);
+
+    }
+
+    /*sprintf(tt, "HTTP/1.1 200 OK\nContent-Type: "*/
+    /*"application/json\n\n{\"ciao\":\"pippo\"}\n\n");*/
     time(&rawtime);
-    z = write(client_connection, tt, strlen(tt));
+    z = write(client_connection, response_buffer, strlen(response_buffer));
     if (z == -1) {
       perror("write() error");
       exit(EXIT_FAILURE);
     }
+
     printf("response sent at: %s\n", ctime(&rawtime));
-    printf("%s\n", tt);
+    printf("%s\n", response_buffer);
     close(client_connection);
   }
 
