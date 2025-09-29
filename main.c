@@ -43,7 +43,7 @@ int is_valid_uuid(const char *str) {
 
 int main(int argc, char *argv[]) {
   char *srvr_addr = NULL;
-  char *srvr_port = "9000";
+  char *srvr_port = "9999";
   int s;                       // socket file descriptor
   struct sockaddr_in adr_srv;  // socket to contact the server
   struct sockaddr_in adr_clnt; // socket to manage client request
@@ -217,7 +217,6 @@ int main(int argc, char *argv[]) {
     strcpy(request_target_copy, request_target);
     char *token = strtok(request_target_copy, "/");
     while (token != NULL) {
-      printf("\n%s", token);
       // for each token search for the relative directory strarting from
       // ~/mockserver/
 
@@ -240,9 +239,7 @@ int main(int argc, char *argv[]) {
     printf("Request-target: %s\n", request_target);
     printf("Request-method: %s\n", request_method);
     printf("mapped_file: %s\n", mapped_file_path);
-    /*FILE *fp = fopen(mapped_file_path, "r");*/
-    /*while (fgets(proc_net_tcp_line, 200, fd)) {*/
-    /*}*/
+
     int fd = open(mapped_file_path, O_RDONLY);
     if (fd == -1) {
       printf("mapped_file doesn't exists");
@@ -256,8 +253,6 @@ int main(int argc, char *argv[]) {
 
     }
 
-    /*sprintf(tt, "HTTP/1.1 200 OK\nContent-Type: "*/
-    /*"application/json\n\n{\"ciao\":\"pippo\"}\n\n");*/
     time(&rawtime);
     z = write(client_connection, response_buffer, strlen(response_buffer));
     if (z == -1) {
