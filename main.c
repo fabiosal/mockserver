@@ -100,6 +100,7 @@ int main(int argc, char *argv[]) {
   char request_method[10] = {0};
   for (;;) {
 
+    memset(response_buffer, 0, BUFFER_LENGTH);
     addr_len = sizeof adr_clnt;
     client_connection =
         accept(s, (struct sockaddr *)&adr_clnt, (socklen_t *)&addr_len);
