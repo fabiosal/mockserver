@@ -248,10 +248,9 @@ int main(int argc, char *argv[]) {
     }
 
     int nread = read(fd, response_buffer, BUFFER_LENGTH);
-    if(nread == -1){
+    if (nread == -1) {
       perror("error reading mapped_file");
       exit(EXIT_FAILURE);
-
     }
 
     time(&rawtime);
@@ -263,6 +262,7 @@ int main(int argc, char *argv[]) {
 
     printf("response sent at: %s\n", ctime(&rawtime));
     printf("%s\n", response_buffer);
+    close(fd);
     close(client_connection);
   }
 
