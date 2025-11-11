@@ -189,13 +189,13 @@ int main(int argc, char *argv[]) {
         perror("connection closed by client");
         // what should I do ?
         close(client_connection);
-        continue;
+        break;
 
       } else {
         perror("error while reading request");
         // what should I do ?
         close(client_connection);
-        continue;
+        break;
       }
     }
 
@@ -250,6 +250,7 @@ int main(int argc, char *argv[]) {
     int nread = read(fd, response_buffer, BUFFER_LENGTH);
     if (nread == -1) {
       perror("error reading mapped_file");
+      // a proper response with error code should be sent back to client
       exit(EXIT_FAILURE);
     }
 
@@ -263,6 +264,10 @@ int main(int argc, char *argv[]) {
     printf("response sent at: %s\n", ctime(&rawtime));
     printf("%s\n", response_buffer);
     close(fd);
+
+    while ((num = recv(client_connection, buffer, sizeof(buffer), 0)) > 0) {
+    }
+    shutdown(client_connection, SHUT_RD);
     close(client_connection);
   }
 
