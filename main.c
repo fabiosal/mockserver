@@ -111,6 +111,16 @@ int main(int argc, char *argv[]) {
 
   char request_target[100] = {0};
   char request_method[10] = {0};
+
+  SSL_CTX *ctx;
+  if (ssl_active == 1) {
+    // openSSL inizialization
+    ctx = SSL_CTX_new(TLS_server_method());
+    OPENSSL_init_ssl(OPENSSL_INIT_LOAD_SSL_STRINGS, NULL);
+    SSL_CTX_use_certificate_file(ctx, "server.crt", SSL_FILETYPE_PEM);
+    SSL_CTX_use_PrivateKey_file(ctx, "server.key", SSL_FILETYPE_PEM);
+  }
+
   for (;;) {
 
     memset(response_buffer, 0, BUFFER_LENGTH);
@@ -122,11 +132,30 @@ int main(int argc, char *argv[]) {
       continue;
     }
 
+    SSL *ssl;
+    if (ssl_active == 1) {
+      ssl = SSL_new(ctx);
+      SSL_set_fd(ssl, client_connection);
+      if (SSL_accept(ssl) <= 0) {
+        perror("TLS handshake failed");
+        puts("Closing connection with the client");
+        close(client_connection);
+        continue;
+      }
+    }
+
     memset(buffer, 0, sizeof buffer);
     int num = 0;
     int i, j;
     while (1) {
-      if ((num = recv(client_connection, buffer, sizeof(buffer), 0)) > 0) {
+
+      if (ssl_active == 1) {
+        num = SSL_read(ssl, buffer, sizeof(buffer));
+      } else {
+        num = recv(client_connection, buffer, sizeof(buffer), 0);
+      }
+
+      if (num > 0) {
         // data in buffer
         printf("\n------------------\n");
         time(&rawtime);
@@ -197,13 +226,11 @@ int main(int argc, char *argv[]) {
 
         // ok I have the entire message, I can proceed to respond
         break;
-
       } else if (num == 0) {
         perror("connection closed by client");
         // what should I do ?
         close(client_connection);
         break;
-
       } else {
         perror("error while reading request");
         // what should I do ?
@@ -268,7 +295,12 @@ int main(int argc, char *argv[]) {
     }
 
     time(&rawtime);
-    z = write(client_connection, response_buffer, strlen(response_buffer));
+    if (ssl_active == 1) {
+      z = SSL_write(ssl, response_buffer, strlen(response_buffer));
+    } else {
+      z = write(client_connection, response_buffer, strlen(response_buffer));
+    }
+
     if (z == -1) {
       perror("write() error");
       exit(EXIT_FAILURE);
@@ -278,9 +310,20 @@ int main(int argc, char *argv[]) {
     printf("%s\n", response_buffer);
     close(fd);
 
-    while ((num = recv(client_connection, buffer, sizeof(buffer), 0)) > 0) {
+    if (ssl_active == 1) {
+      num = SSL_read(ssl, buffer, sizeof(buffer));
+    } else {
+      num = recv(client_connection, buffer, sizeof(buffer), 0);
+    }
+    while (num > 0) {
     }
     shutdown(client_connection, SHUT_RD);
+
+    if (ssl_active == 1) {
+      SSL_shutdown(ssl);
+      SSL_free(ssl);
+    }
+
     close(client_connection);
   }
 
