@@ -1,9 +1,11 @@
 #define _DEFAULT_SOURCE
 
 #include <arpa/inet.h>
+#include <bits/getopt_core.h>
 #include <ctype.h>
 #include <fcntl.h>
 #include <netinet/in.h>
+#include <openssl/ssl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,31 +44,42 @@ int is_valid_uuid(const char *str) {
 }
 
 int main(int argc, char *argv[]) {
-  char *srvr_addr = NULL;
-  char *srvr_port = "9999";
+  char srvr_addr[20] = "127.0.0.1";
+  char srvr_port[9] = "9999";
+  int ssl_active = 0;
+  int opt;
   int s;                       // socket file descriptor
   struct sockaddr_in adr_srv;  // socket to contact the server
   struct sockaddr_in adr_clnt; // socket to manage client request
   int z, client_connection;    // contains return values to check for errors
   int addr_len;
   time_t rawtime;
-  char tt[100];
   char buffer[BUFFER_LENGTH];
   char response_buffer[BUFFER_LENGTH];
 
-  // get server ip address from command line
-  if (argc >= 2) {
-    srvr_addr = argv[1];
-  } else {
-    srvr_addr = "127.0.0.1";
+  while ((opt = getopt(argc, argv, "a:p:s")) != -1) {
+    switch (opt) {
+    case 'a':
+      strcpy(srvr_addr, optarg);
+      break;
+    case 'p':
+      strcpy(srvr_port, optarg);
+      break;
+    case 's':
+      ssl_active = 1;
+      break;
+    }
   }
 
-  if (argc >= 3) {
-    srvr_port = argv[2];
+  // optind is for the extra arguments
+  // which are not parsed
+  for (; optind < argc; optind++) {
+    printf("Extra arguments: %s\n", argv[optind]);
   }
 
   printf("Server address: %s\n", srvr_addr);
   printf("Server port: %s\n", srvr_port);
+  printf("Server secure server: %d\n", ssl_active);
 
   s = socket(PF_INET, SOCK_STREAM, 0);
   if (s == -1) {

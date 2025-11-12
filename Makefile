@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := run
 
 mockserver: main.c
-	gcc main.c -o mockserver
+	gcc main.c -o mockserver -Wall
 
 clean:
 	rm mockserver
